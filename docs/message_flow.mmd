@@ -1,0 +1,54 @@
+
+flowchart TB
+    OS["Order Service<br/>Producer"]
+
+    EX[("ecommerce.events<br/>Topic Exchange")]
+
+    OS -->|"Publish OrderCreated<br/>order.created"| EX
+
+    subgraph SERVICES["Consumer Services"]
+        direction LR
+
+        IQ["inventory.order-created"]
+        PQ["payment.order-created"]
+        NQ["notification.order-created"]
+
+        IC["Inventory Consumer"]
+        PC["Payment Consumer"]
+        NC["Notification Consumer"]
+
+        IQ --> IC
+        PQ --> PC
+        NQ --> NC
+    end
+
+    EX -->|"Binding: order.created"| IQ
+    EX -->|"Binding: order.created"| PQ
+    EX -->|"Binding: order.created"| NQ
+
+    IC -->|"Success / ACK"| IDONE["Inventory completed"]
+    PC -->|"Success / ACK"| PDONE["Payment completed"]
+    NC -->|"Success / ACK"| NDONE["Notification completed"]
+
+    subgraph ERROR["Failure Handling"]
+        DLX[("ecommerce.dlx<br/>Direct Exchange")]
+
+        IDLQ["inventory.order-created.dlq"]
+        PDLQ["payment.order-created.dlq"]
+        NDLQ["notification.order-created.dlq"]
+
+        DLX --> IDLQ
+        DLX --> PDLQ
+        DLX --> NDLQ
+    end
+
+    IC -->|"Failure / NACK<br/>requeue=false"| DLX
+    PC -->|"Failure / NACK<br/>requeue=false"| DLX
+    NC -->|"Failure / NACK<br/>requeue=false"| DLX
+
+    IC -.->|"Disconnect before ACK<br/>Requeue / Redelivered"| IQ
+    PC -.->|"Disconnect before ACK<br/>Requeue / Redelivered"| PQ
+    NC -.->|"Disconnect before ACK<br/>Requeue / Redelivered"| NQ
+
+    EX -.->|"Optional future extension"| AQ["Analytics Queue"]
+    AQ -.-> AC["Analytics Consumer"]
