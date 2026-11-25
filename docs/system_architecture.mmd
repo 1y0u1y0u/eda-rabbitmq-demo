@@ -1,0 +1,51 @@
+
+flowchart TB
+
+    subgraph OLD["A. Traditional Synchronous Architecture"]
+        direction TB
+        U1["User"]
+        O1["Order Service"]
+
+        I1["Inventory Service"]
+        P1["Payment Service"]
+        N1["Notification Service"]
+
+        U1 --> O1
+        O1 -->|"Direct Call"| I1
+        I1 -->|"Response"| O1
+        O1 -->|"Direct Call"| P1
+        P1 -->|"Response"| O1
+        O1 -->|"Direct Call"| N1
+        N1 -->|"Response"| O1
+    end
+
+    subgraph NEW["B. Event-Driven Architecture"]
+        direction TB
+        U2["User"]
+        O2["Order Service<br/>Producer"]
+
+        EX["RabbitMQ<br/>Topic Exchange<br/>ecommerce.events"]
+
+        Q1["inventory.order-created"]
+        Q2["payment.order-created"]
+        Q3["notification.order-created"]
+        Q4["analytics.order-created<br/>(Optional)"]
+
+        I2["Inventory Service<br/>Consumer"]
+        P2["Payment Service<br/>Consumer"]
+        N2["Notification Service<br/>Consumer"]
+        A2["Analytics Service<br/>Consumer"]
+
+        U2 --> O2
+        O2 -->|"Publish OrderCreated"| EX
+
+        EX -->|"order.created"| Q1
+        EX -->|"order.created"| Q2
+        EX -->|"order.created"| Q3
+        EX -.->|"Optional"| Q4
+
+        Q1 --> I2
+        Q2 --> P2
+        Q3 --> N2
+        Q4 -.-> A2
+    end
