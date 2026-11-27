@@ -1,0 +1,22 @@
+{
+    "products": [
+        {
+            "product_id": "P001",
+            "product_name": "筆記型電腦",
+            "initial_stock": 10,
+            "stock": 10
+        },
+        {
+            "product_id": "P002",
+            "product_name": "無線滑鼠",
+            "initial_stock": 20,
+            "stock": 20
+        },
+        {
+            "product_id": "P003",
+            "product_name": "機械鍵盤",
+            "initial_stock": 5,
+            "stock": 5
+        }
+    ]
+}
