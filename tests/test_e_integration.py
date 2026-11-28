@@ -136,9 +136,31 @@ class IntegrationTest(TestCase):
         entries = (self.root / "payment.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(json.loads(entries[-1])["status"], "ERROR")
 
-    def test_current_inventory_shortage_nacks_without_changing_stock(self):
-        """Record the observed behavior until the team agrees on the contract."""
+    def test_inventory_shortage_acks_and_redelivery_after_restock_deduplicates(self):
         before = self.stock()
-        _, body = self.publish(quantity=before + 1)
-        self.consume("inventory", self.inventory_handler, body, ack=False)
+        quantity = before + 1
+        event_id, body = self.publish(quantity=quantity)
+        self.consume("inventory", self.inventory_handler, body)
+        self.assertEqual(self.stock(), before)
+
+        state = json.loads(self.products.read_text(encoding="utf-8"))
+        product = next(p for p in state["products"] if p["product_id"] == "P001")
+        product["stock"] = quantity + 3
+        self.products.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+        self.consume("inventory", self.inventory_handler, body)
+        self.assertEqual(self.stock(), quantity + 3)
+
+        new_event_id, new_body = self.publish(quantity=quantity)
+        self.assertNotEqual(new_event_id, event_id)
+        self.consume("inventory", self.inventory_handler, new_body)
+        self.assertEqual(self.stock(), 3)
+
+    def test_invalid_inventory_event_nacks_without_changing_stock(self):
+        before = self.stock()
+        _, body = self.publish()
+        event = json.loads(body)
+        event["data"]["quantity"] = 0
+        self.consume("inventory", self.inventory_handler, json.dumps(event).encode(),
+                     ack=False)
         self.assertEqual(self.stock(), before)
