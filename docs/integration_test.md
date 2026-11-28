@@ -1,5 +1,19 @@
 # 組員 E 整合測試
 
+## 真實 RabbitMQ 驗收結果
+
+2026-11-28（台灣時間），E 在 GitHub Actions 的隔離環境使用專案的 Docker Compose 啟動 RabbitMQ。E 驗收版為 `ca617c3`，C 為 `80d886c`，D 為 `49e4282`。從操作頁的 Flask 測試用戶端出單，實際經 RabbitMQ 走各服務，以下結果更新後文測試計畫中的狀態。
+
+| 情境 | 事件編號 | 結果 |
+|---|---|---|
+| 正常出單、通知稍後啟動（E01、E02） | `EVT80AAC5DF9A67` | 發布已確認，三個 Queue 各收到 1 筆。P001 庫存 10 → 8，付款成功。啟動通知服務前 Ready 為 1，處理相同事件並 ACK 後為 0，畫面顯示通知已記錄。 |
+| 付款拒絕（E03） | `EVT24381F0B207E` | 畫面顯示付款遭拒，服務 ACK，付款 DLQ 維持 0 筆。 |
+| 付款技術例外（E04） | `EVTDF35F720B9AC` | 付款服務 NACK，從付款 DLQ 取出的訊息與原始事件編號一致。 |
+
+[GitHub Actions 實測日誌](https://github.com/1y0u1y0u/eda-rabbitmq-demo/actions/runs/46157421987/job/141017053264)
+
+庫存不足的 ACK／NACK 差異沿用下方紀錄，由 B 與 C 核對。Analytics 接收端已提交，第二階段驗收仍需 B 配置對應拓樸。下方的 E05–E08 保留其原測試範圍與待驗收狀態。
+
 ## 實際驗證範圍
 
 GitHub 核對版本為 `main/3440247`、C 的 `80d886c`、D 的 `49e4282`、B 的 `03d4c36`。C 的 `create_order()` 依約定回傳發布狀態並接受金額字串。D 的付款模式是 `success`、`decline`、`error`，付款和通知結果存在各自的 SQLite `results` 表。C 的庫存版目前更新 `data/products.json`，請用測試副本，將實際檔案位置與重置方式交給 C 確認。
