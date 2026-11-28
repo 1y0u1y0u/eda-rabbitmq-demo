@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # 商品庫存資料檔案
 PRODUCTS_FILE = PROJECT_ROOT / "data" / "products.json"
 
+
 # 讀取商品庫存
 def load_inventory(inventory_file=PRODUCTS_FILE):
     """
@@ -30,11 +31,19 @@ def load_inventory(inventory_file=PRODUCTS_FILE):
         raise ValueError("products 必須是清單")
 
     inventory.setdefault("processed_event_ids", [])
+    inventory.setdefault("processing_results", [])
+
+    if not isinstance(inventory["processed_event_ids"], list):
+        raise ValueError("processed_event_ids 必須是清單")
+
+    if not isinstance(inventory["processing_results"], list):
+        raise ValueError("processing_results 必須是清單")
 
     for product in inventory["products"]:
         product.setdefault("stock", product["initial_stock"])
 
     return inventory
+
 
 # 儲存更新後的庫存
 def save_inventory(inventory, inventory_file=PRODUCTS_FILE):
@@ -44,7 +53,6 @@ def save_inventory(inventory, inventory_file=PRODUCTS_FILE):
     """
 
     inventory_file = Path(inventory_file)
-
     temp_path = None
 
     try:
@@ -71,17 +79,19 @@ def save_inventory(inventory, inventory_file=PRODUCTS_FILE):
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
 
+
 # 處理訂單事件
 def process_order_created(event, inventory_file=PRODUCTS_FILE):
     """
     處理 OrderCreated 事件。
 
     1. 驗證事件格式
-    2. 防止重複事件
-    3. 找到商品
-    4. 檢查庫存
-    5. 扣除庫存
-    6. 儲存更新結果
+    2. 讀取庫存
+    3. 防止重複事件
+    4. 找到商品
+    5. 檢查庫存
+    6. 庫存不足：保存業務拒絕結果並正常返回
+    7. 庫存足夠：扣除庫存並保存結果
     """
 
     # 1. 驗證事件格式
@@ -126,16 +136,51 @@ def process_order_created(event, inventory_file=PRODUCTS_FILE):
 
     # 5. 檢查庫存是否足夠
     if current_stock < quantity:
-        raise ValueError(
+
+        rejection_reason = (
             f"庫存不足！目前庫存：{current_stock}，"
             f"需要數量：{quantity}"
         )
 
-    # 6. 扣除庫存
+        # 保存業務拒絕結果
+        inventory["processing_results"].append({
+            "event_id": event_id,
+            "order_id": order_id,
+            "product_id": product_id,
+            "quantity": quantity,
+            "status": "rejected",
+            "reason": rejection_reason
+        })
+
+        # 即使業務拒絕，也要記錄 event_id
+        # 避免補貨後相同事件再次扣庫存
+        inventory["processed_event_ids"].append(event_id)
+
+        # 保存拒絕結果及去重紀錄
+        save_inventory(inventory, inventory_file)
+
+        print("[REJECTED] 庫存不足，訂單不予處理")
+        print("拒絕原因：", rejection_reason)
+        print("目前庫存維持：", current_stock)
+
+        # 正常返回，讓共用 Consumer 執行 ACK
+        return "rejected"
+
+    # 6. 庫存足夠，扣除庫存
     product["stock"] -= quantity
 
     # 7. 記錄已處理事件
     inventory["processed_event_ids"].append(event_id)
+
+    # 保存成功結果
+    inventory["processing_results"].append({
+        "event_id": event_id,
+        "order_id": order_id,
+        "product_id": product_id,
+        "quantity": quantity,
+        "status": "processed",
+        "reason": None
+    })
 
     # 8. 儲存資料
     save_inventory(inventory, inventory_file)
